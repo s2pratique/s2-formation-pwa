@@ -24,7 +24,7 @@ export default function Login() {
     <div className="login-container">
       <div className="login-card">
         <div className="logo-container">
-          <img src="/logo-s2.png" alt="S2 Formation" className="logo" />
+          <img src="/s2-formation-pwa/logo-s2.png" alt="S2 Formation" className="logo" />
         </div>
         <h1>S2 Formation</h1>
         <h2>Évaluation Pratique</h2>
