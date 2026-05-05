@@ -429,7 +429,7 @@ export const generatePDF = async (stagiaire, formation, session) => {
     // Charger le logo
     let logo = null;
     try {
-      logo = await loadImage('/logo-s2.png');
+      logo = await loadImage('/s2-formation-pwa/logo-s2.png');
     } catch (error) {
       console.warn('Logo non chargé, PDF généré sans logo');
     }
