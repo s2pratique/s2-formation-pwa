@@ -6,6 +6,8 @@ import Login from './components/Login';
 import Home from './components/Home';
 import NouvelleSession from './components/NouvelleSession';
 import Evaluation from './components/Evaluation';
+import Sessions from './components/Sessions';
+import Statistiques from './components/Statistiques';
 import './App.css';
 
 function App() {
@@ -32,6 +34,8 @@ function App() {
         {currentView === 'home' && <Home onNavigate={handleNavigate} />}
         {currentView === 'nouvelle-session' && <NouvelleSession onNavigate={handleNavigate} />}
         {currentView === 'evaluation' && <Evaluation onNavigate={handleNavigate} />}
+        {currentView === 'sessions' && <Sessions onNavigate={handleNavigate} />}
+        {currentView === 'statistiques' && <Statistiques onNavigate={handleNavigate} />}
       </div>
     </GoogleOAuthProvider>
   );
