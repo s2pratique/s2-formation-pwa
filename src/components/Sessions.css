@@ -1,0 +1,168 @@
+.sessions-container {
+  min-height: 100vh;
+  background: #f8f9fa;
+  padding-bottom: 20px;
+}
+
+.sessions-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.sessions-section {
+  margin-bottom: 30px;
+}
+
+.sessions-section h2 {
+  margin: 0 0 15px 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.session-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+}
+
+.session-info h3 {
+  margin: 0 0 5px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.session-date {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.session-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-badge.en-cours {
+  background: #ffc107;
+  color: #333;
+}
+
+.session-badge.terminee {
+  background: #28a745;
+  color: white;
+}
+
+.session-stagiaires {
+  margin-bottom: 15px;
+}
+
+.session-stagiaires > p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.stagiaires-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stagiaire-tag {
+  background: #f0f7ff;
+  color: #0066CC;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.stagiaire-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.stagiaire-result:last-child {
+  border-bottom: none;
+}
+
+.result-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.result-badge.admis {
+  background: #d4edda;
+  color: #155724;
+}
+
+.result-badge.refuse {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.session-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-action.danger {
+  background: white;
+  color: #dc3545;
+  border: 2px solid #dc3545;
+}
+
+.btn-action.danger:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-state p {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  color: #666;
+}
+
+@media (max-width: 768px) {
+  .session-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .session-actions {
+    flex-direction: column;
+  }
+
+  .btn-action {
+    width: 100%;
+  }
+}
