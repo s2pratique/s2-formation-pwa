@@ -168,12 +168,7 @@ export const useStore = create(
       }
     }),
     {
-      name: 's2-formation-storage',
-      partialize: (state) => ({
-        user: state.user,
-        sessions: state.sessions,
-        stats: state.stats
-      })
+      name: 's2-formation-storage'
     }
   )
 );
