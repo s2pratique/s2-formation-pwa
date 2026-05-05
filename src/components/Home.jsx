@@ -19,7 +19,7 @@ export default function Home({ onNavigate }) {
     <div className="home-container">
       <div className="header">
         <div className="header-logo">
-          <img src="/logo-s2.png" alt="S2 Formation" className="logo-small" />
+          <img src="/s2-formation-pwa/logo-s2.png" alt="S2 Formation" className="logo-small" />
           <h1>S2 Formation</h1>
         </div>
         <div className="user-info">
