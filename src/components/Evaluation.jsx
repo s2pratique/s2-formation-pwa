@@ -1,276 +1,310 @@
-import React, { useState, useRef } from 'react';
-import { useStore } from '../store/useStore';
-import { FORMATIONS } from '../config/constants';
-import { ArrowLeft, ChevronLeft, ChevronRight, FileText, CheckCircle, XCircle } from 'lucide-react';
-import SignatureCanvas from 'react-signature-canvas';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { getSession, updateSession } from '../services/database';
+import { getGridByType } from '../data/grids';
+import SignatureCanvas from './SignatureCanvas';
 import { generatePDF } from '../utils/pdfGenerator';
-import './Evaluation.css';
 
-export default function Evaluation({ onNavigate }) {
-  const {
-    currentSession,
-    activeStagiaireIndex,
-    setActiveStagiaireIndex,
-    updateStagiaireEvaluation,
-    updateStagiaireSignature,
-    updateSession
-  } = useStore();
-
-  const [signatureMode, setSignatureMode] = useState(false);
-  const signaturePad = useRef(null);
-
-  if (!currentSession) {
-    onNavigate('home');
-    return null;
-  }
-
-  const formation = FORMATIONS[currentSession.formation];
-  const stagiaire = currentSession.stagiaires[activeStagiaireIndex];
+const Evaluation = () => {
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
   
-  // Pour ECHAF et HABELEC, récupérer la section selon le profil
-  let sections = [];
-  if (formation.sections) {
-    // TH-01
-    sections = formation.sections;
-  } else if (formation.profils && currentSession.profil) {
-    // ECHAF-01 ou HABELEC-01
-    const profilData = formation.sections[currentSession.profil];
-    if (profilData) {
-      sections = [{
-        id: profilData.id,
-        nom: profilData.nom || currentSession.profil,
-        criteres: profilData.criteres
-      }];
-    }
-  }
+  const [session, setSession] = useState(null);
+  const [currentTraineeIndex, setCurrentTraineeIndex] = useState(0);
+  const [scores, setScores] = useState({});
+  const [signature, setSignature] = useState(null);
+  const [showSignature, setShowSignature] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleCritereClick = (critereId, bareme, penalite) => {
-    const currentScore = stagiaire.evaluations[critereId] || bareme;
-    let newScore = currentScore + penalite;
-    
-    // Ne pas descendre en dessous de 0
-    if (newScore < 0) newScore = 0;
-    
-    updateStagiaireEvaluation(stagiaire.id, critereId, newScore);
-  };
+  useEffect(() => {
+    loadSession();
+  }, [sessionId]);
 
-  const handleResetCritere = (critereId, bareme) => {
-    updateStagiaireEvaluation(stagiaire.id, critereId, bareme);
-  };
-
-  const calculerScore = () => {
-    let total = 0;
-    sections.forEach(section => {
-      section.criteres.forEach(critere => {
-        const score = stagiaire.evaluations[critere.id];
-        if (score !== undefined) {
-          total += score;
-        } else {
-          total += critere.bareme; // Score max par défaut
+  const loadSession = async () => {
+    try {
+      const data = await getSession(sessionId);
+      if (data) {
+        setSession(data);
+        // Charger les scores existants
+        if (data.trainees[currentTraineeIndex]?.scores) {
+          setScores(data.trainees[currentTraineeIndex].scores);
         }
-      });
+        if (data.trainees[currentTraineeIndex]?.signature) {
+          setSignature(data.trainees[currentTraineeIndex].signature);
+        }
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Erreur chargement session:', error);
+      setLoading(false);
+    }
+  };
+
+  const handlePenalty = (criterionId, points) => {
+    setScores(prev => {
+      const current = prev[criterionId] || 0;
+      const newScore = current + points;
+      return {
+        ...prev,
+        [criterionId]: newScore
+      };
     });
-    return total;
   };
 
-  const calculerTotal = () => {
-    if (formation.code === 'TH-01') {
-      return formation.total;
-    } else if (currentSession.profil && formation.sections[currentSession.profil]) {
-      return formation.sections[currentSession.profil].total;
-    }
-    return 0;
+  const handleReset = (criterionId) => {
+    setScores(prev => {
+      const newScores = { ...prev };
+      delete newScores[criterionId];
+      return newScores;
+    });
   };
 
-  const verifierAdmission = () => {
-    const score = calculerScore();
-    const total = calculerTotal();
-    
-    if (formation.code === 'TH-01') {
-      // TH-01: 35/50 minimum + moyenne dans chaque thème
-      if (score < formation.seuil) return false;
-      
-      // Vérifier moyenne par thème
-      const scoreVerification = stagiaire.evaluations['epi'] !== undefined 
-        ? stagiaire.evaluations['epi'] 
-        : 5;
-      const maxVerification = 5;
-      
-      if (scoreVerification < maxVerification / 2) return false;
-      
-      // Score pratique
-      const scorePratique = score - scoreVerification;
-      const maxPratique = 45;
-      
-      if (scorePratique < maxPratique / 2) return false;
-      
-      return true;
-    } else {
-      // ECHAF et HABELEC: au moins la moyenne
-      return score >= total / 2;
-    }
-  };
+  const saveCurrentTrainee = async () => {
+    if (!session) return;
 
-  const handleSauvegarderSignature = () => {
-    if (signaturePad.current.isEmpty()) {
-      alert('Veuillez signer avant de sauvegarder');
-      return;
-    }
-
-    const signatureData = signaturePad.current.toDataURL();
-    const score = calculerScore();
-    const admis = verifierAdmission();
-
-    updateStagiaireSignature(stagiaire.id, signatureData);
-    
-    // Mettre à jour le score et l'admission
-    const updatedStagiaire = {
-      ...stagiaire,
-      scoreTotal: score,
-      admis: admis,
-      signature: signatureData,
-      dateEvaluation: new Date().toISOString()
+    const updatedTrainees = [...session.trainees];
+    updatedTrainees[currentTraineeIndex] = {
+      ...updatedTrainees[currentTraineeIndex],
+      scores,
+      signature,
+      lastUpdated: new Date().toISOString()
     };
 
-    setSignatureMode(false);
-    alert(`Évaluation enregistrée : ${score}/${calculerTotal()} - ${admis ? 'ADMIS' : 'REFUSÉ'}`);
+    const updatedSession = {
+      ...session,
+      trainees: updatedTrainees
+    };
+
+    await updateSession(sessionId, updatedSession);
+    setSession(updatedSession);
   };
 
-  const handleGenererPDF = async () => {
+  const handlePreviousTrainee = async () => {
+    await saveCurrentTrainee();
+    const newIndex = currentTraineeIndex - 1;
+    setCurrentTraineeIndex(newIndex);
+    setScores(session.trainees[newIndex]?.scores || {});
+    setSignature(session.trainees[newIndex]?.signature || null);
+  };
+
+  const handleNextTrainee = async () => {
+    await saveCurrentTrainee();
+    const newIndex = currentTraineeIndex + 1;
+    setCurrentTraineeIndex(newIndex);
+    setScores(session.trainees[newIndex]?.scores || {});
+    setSignature(session.trainees[newIndex]?.signature || null);
+  };
+
+  const handleSignatureSave = async (signatureData) => {
+    setSignature(signatureData);
+    setShowSignature(false);
+    await saveCurrentTrainee();
+  };
+
+  const handleGeneratePDF = async () => {
+    await saveCurrentTrainee();
+    const currentTrainee = session.trainees[currentTraineeIndex];
+    
     try {
-      await generatePDF(stagiaire, formation, currentSession);
-      alert('PDF généré avec succès !');
+      await generatePDF({
+        session,
+        trainee: currentTrainee,
+        scores,
+        signature,
+        grid: getGridByType(session.formationType, session.profile)
+      });
     } catch (error) {
       console.error('Erreur génération PDF:', error);
       alert('Erreur lors de la génération du PDF');
     }
   };
 
-  const handleStagiaireSuivant = () => {
-    if (activeStagiaireIndex < currentSession.stagiaires.length - 1) {
-      setActiveStagiaireIndex(activeStagiaireIndex + 1);
-    }
+  const calculateScore = () => {
+    const grid = getGridByType(session.formationType, session.profile);
+    if (!grid) return { total: 0, max: 0, percentage: 0 };
+
+    let totalPenalty = 0;
+    grid.sections.forEach(section => {
+      section.criteria.forEach(criterion => {
+        const penalty = scores[criterion.id] || 0;
+        totalPenalty += penalty;
+      });
+    });
+
+    const maxPoints = grid.maxPoints;
+    const finalScore = Math.max(0, maxPoints + totalPenalty);
+    const percentage = (finalScore / maxPoints) * 100;
+
+    return {
+      total: finalScore,
+      max: maxPoints,
+      percentage: Math.round(percentage)
+    };
   };
 
-  const handleStagiairePrecedent = () => {
-    if (activeStagiaireIndex > 0) {
-      setActiveStagiaireIndex(activeStagiaireIndex - 1);
+  const isAdmis = () => {
+    const grid = getGridByType(session.formationType, session.profile);
+    if (!grid) return false;
+
+    const { total, max } = calculateScore();
+    const percentage = (total / max) * 100;
+
+    // Vérification selon le seuil de la grille
+    if (grid.threshold) {
+      return percentage >= grid.threshold;
     }
+
+    return percentage >= 70; // Seuil par défaut
   };
 
-  const handleTerminerSession = () => {
-    if (window.confirm('Voulez-vous terminer cette session ?')) {
-      updateSession(currentSession.id, { statut: 'terminee' });
-      onNavigate('home');
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl">Chargement...</div>
+      </div>
+    );
+  }
 
-  const scoreActuel = calculerScore();
-  const scoreTotal = calculerTotal();
-  const pourcentage = ((scoreActuel / scoreTotal) * 100).toFixed(1);
-  const seuil = formation.seuil || scoreTotal / 2;
-  const estAdmis = verifierAdmission();
+  if (!session) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-red-600">Session introuvable</div>
+      </div>
+    );
+  }
+
+  const currentTrainee = session.trainees[currentTraineeIndex];
+  const grid = getGridByType(session.formationType, session.profile);
+  const score = calculateScore();
+  const admis = isAdmis();
 
   return (
-    <div className="evaluation-container">
-      <div className="eval-header">
-        <button className="back-btn" onClick={handleTerminerSession}>
-          <ArrowLeft size={20} />
-          Terminer
-        </button>
-        <div className="eval-title">
-          <h1>{formation.nom}</h1>
-          <p className="eval-code">{formation.code} {currentSession.profil && `- ${currentSession.profil}`}</p>
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <div className="bg-blue-600 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => navigate('/')}
+              className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition"
+            >
+              ← Revenir (sans clôturer)
+            </button>
+            <div className="text-center">
+              <div className="text-2xl font-bold">{session.formationType}</div>
+              {session.profile && (
+                <div className="text-sm opacity-90">{session.profile}</div>
+              )}
+            </div>
+            <div className="w-32"></div>
+          </div>
+
+          {/* Navigation stagiaires */}
+          <div className="flex items-center justify-between bg-blue-700 rounded-lg p-3">
+            <button
+              onClick={handlePreviousTrainee}
+              disabled={currentTraineeIndex === 0}
+              className="p-2 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft size={24} />
+            </button>
+
+            <div className="text-center">
+              <div className="text-lg font-bold">
+                {currentTrainee.firstName} {currentTrainee.lastName}
+              </div>
+              <div className="text-sm opacity-75">
+                Stagiaire {currentTraineeIndex + 1} / {session.trainees.length}
+              </div>
+            </div>
+
+            <button
+              onClick={handleNextTrainee}
+              disabled={currentTraineeIndex === session.trainees.length - 1}
+              className="p-2 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              <ChevronRight size={24} />
+            </button>
+          </div>
+
+          {/* Score */}
+          <div className="mt-4 bg-white text-gray-800 rounded-lg p-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-sm text-gray-600">Score</div>
+                <div className="text-3xl font-bold">
+                  {score.total} / {score.max}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm text-gray-600">Réussite</div>
+                <div className="text-3xl font-bold">{score.percentage}%</div>
+              </div>
+              <div>
+                <div className={`text-2xl font-bold px-4 py-2 rounded-lg ${
+                  admis ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                }`}>
+                  {admis ? '✓ ADMIS' : '✗ REFUSÉ'}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Navigation stagiaires */}
-      <div className="stagiaire-nav">
-        <button 
-          className="nav-btn"
-          onClick={handleStagiairePrecedent}
-          disabled={activeStagiaireIndex === 0}
-        >
-          <ChevronLeft size={24} />
-        </button>
-        
-        <div className="stagiaire-info-card">
-          <div className="stagiaire-numero-badge">
-            {activeStagiaireIndex + 1}/{currentSession.stagiaires.length}
-          </div>
-          <h2>{stagiaire.nom} {stagiaire.prenom}</h2>
-          <div className={`score-display ${estAdmis ? 'admis' : 'refuse'}`}>
-            <span className="score-value">{scoreActuel}/{scoreTotal}</span>
-            <span className="score-percentage">({pourcentage}%)</span>
-            {stagiaire.dateEvaluation && (
-              <span className="score-badge">
-                {estAdmis ? <CheckCircle size={20} /> : <XCircle size={20} />}
-                {estAdmis ? 'ADMIS' : 'REFUSÉ'}
-              </span>
-            )}
-          </div>
-          <div className="score-seuil">
-            Seuil d'admission : {seuil}/{scoreTotal}
-          </div>
-        </div>
+      {/* Grille d'évaluation */}
+      <div className="max-w-4xl mx-auto p-4 space-y-6">
+        {grid.sections.map(section => (
+          <div key={section.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="bg-blue-100 px-4 py-3 border-b border-blue-200">
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-lg text-gray-800">{section.title}</h3>
+                <span className="text-sm text-gray-600">/{section.maxPoints} pts</span>
+              </div>
+            </div>
 
-        <button 
-          className="nav-btn"
-          onClick={handleStagiaireSuivant}
-          disabled={activeStagiaireIndex === currentSession.stagiaires.length - 1}
-        >
-          <ChevronRight size={24} />
-        </button>
-      </div>
-
-      {/* Grilles d'évaluation */}
-      <div className="grilles-container">
-        {sections.map((section) => (
-          <div key={section.id} className="section-card">
-            <h3 className="section-title">{section.nom}</h3>
-            {section.detail && <p className="section-detail">{section.detail}</p>}
-            
-            <div className="criteres-list">
-              {section.criteres.map((critere) => {
-                const scoreActuel = stagiaire.evaluations[critere.id] !== undefined
-                  ? stagiaire.evaluations[critere.id]
-                  : critere.bareme;
-                const nbClics = Math.floor((critere.bareme - scoreActuel) / Math.abs(critere.penalite));
+            <div className="divide-y">
+              {section.criteria.map(criterion => {
+                const currentPenalty = scores[criterion.id] || 0;
+                const timesClicked = Math.abs(Math.floor(currentPenalty / criterion.penalty));
 
                 return (
-                  <div key={critere.id} className="critere-item">
-                    <div className="critere-header">
-                      <div className="critere-libelle">
-                        <p className="critere-text">{critere.libelle}</p>
-                        {critere.detail && (
-                          <p className="critere-detail">{critere.detail}</p>
+                  <div key={criterion.id} className="p-4 hover:bg-gray-50 transition">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-800">{criterion.description}</div>
+                        {timesClicked > 0 && (
+                          <div className="text-sm text-red-600 mt-1">
+                            {timesClicked} oubli{timesClicked > 1 ? 's' : ''} ({currentPenalty} pts)
+                          </div>
                         )}
                       </div>
-                      <div className="critere-score">
-                        <span className={`score ${scoreActuel < critere.bareme ? 'penalized' : ''}`}>
-                          {scoreActuel}/{critere.bareme}
-                        </span>
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          onClick={() => handlePenalty(criterion.id, -criterion.penalty)}
+                          className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition font-medium"
+                          title="Retirer des points"
+                        >
+                          -{criterion.penalty} pts
+                        </button>
+                        <button
+                          onClick={() => handlePenalty(criterion.id, criterion.penalty)}
+                          className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition font-medium"
+                          title="Rajouter des points"
+                        >
+                          +{criterion.penalty} pts
+                        </button>
+                        {currentPenalty !== 0 && (
+                          <button
+                            onClick={() => handleReset(criterion.id)}
+                            className="px-3 py-1 bg-gray-400 text-white rounded text-sm hover:bg-gray-500 transition"
+                            title="Réinitialiser"
+                          >
+                            Reset
+                          </button>
+                        )}
                       </div>
-                    </div>
-                    
-                    <div className="critere-actions">
-                      <button
-                        className="btn-penalite"
-                        onClick={() => handleCritereClick(critere.id, critere.bareme, critere.penalite)}
-                        disabled={scoreActuel === 0}
-                      >
-                        {critere.penalite} pt
-                      </button>
-                      <div className="clics-indicator">
-                        {nbClics > 0 && `${nbClics} oubli${nbClics > 1 ? 's' : ''}`}
-                      </div>
-                      <button
-                        className="btn-reset"
-                        onClick={() => handleResetCritere(critere.id, critere.bareme)}
-                        disabled={scoreActuel === critere.bareme}
-                      >
-                        Reset
-                      </button>
                     </div>
                   </div>
                 );
@@ -278,56 +312,52 @@ export default function Evaluation({ onNavigate }) {
             </div>
           </div>
         ))}
+
+        {/* Signature et PDF */}
+        <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+          <h3 className="text-lg font-bold text-gray-800">Finalisation</h3>
+
+          {!signature ? (
+            <button
+              onClick={() => setShowSignature(true)}
+              className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium"
+            >
+              📝 Signer l'évaluation
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm text-green-600 font-medium">✓ Signature enregistrée</div>
+              <img src={signature} alt="Signature" className="border rounded h-20" />
+              <button
+                onClick={() => setShowSignature(true)}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Modifier la signature
+              </button>
+            </div>
+          )}
+
+          {signature && (
+            <button
+              onClick={handleGeneratePDF}
+              className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium flex items-center justify-center gap-2"
+            >
+              <Download size={20} />
+              Générer le PDF
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="eval-actions">
-        {!signatureMode ? (
-          <>
-            <button className="btn-action secondary" onClick={() => setSignatureMode(true)}>
-              Signature formateur
-            </button>
-            {stagiaire.signature && (
-              <button className="btn-action primary" onClick={handleGenererPDF}>
-                <FileText size={20} />
-                Générer PDF
-              </button>
-            )}
-          </>
-        ) : (
-          <div className="signature-section">
-            <h3>Signature formateur</h3>
-            <div className="signature-canvas-wrapper">
-              <SignatureCanvas
-                ref={signaturePad}
-                canvasProps={{
-                  className: 'signature-canvas'
-                }}
-              />
-            </div>
-            <div className="signature-actions">
-              <button 
-                className="btn-action secondary"
-                onClick={() => signaturePad.current.clear()}
-              >
-                Effacer
-              </button>
-              <button 
-                className="btn-action secondary"
-                onClick={() => setSignatureMode(false)}
-              >
-                Annuler
-              </button>
-              <button 
-                className="btn-action primary"
-                onClick={handleSauvegarderSignature}
-              >
-                Sauvegarder
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Modal Signature */}
+      {showSignature && (
+        <SignatureCanvas
+          onSave={handleSignatureSave}
+          onClose={() => setShowSignature(false)}
+        />
+      )}
     </div>
   );
-}
+};
+
+export default Evaluation;
